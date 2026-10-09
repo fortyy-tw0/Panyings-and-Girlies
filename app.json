@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "pushy",
-    "slug": "pushy",
+    "name": "SikLo",
+    "slug": "SikLo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "pushy",
+    "scheme": "SikLo",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
