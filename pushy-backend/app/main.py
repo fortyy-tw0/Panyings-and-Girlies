@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from . import db
 from .prediction import router as prediction_router
 from .records import router as records_router
+from .reminders import router as reminders_router
 
 app = FastAPI(title="Pu-shy Backend", version="0.2.0")
 
@@ -44,6 +45,7 @@ def startup():
 
 app.include_router(records_router)
 app.include_router(prediction_router)
+app.include_router(reminders_router)
 
 
 @app.get("/health")
