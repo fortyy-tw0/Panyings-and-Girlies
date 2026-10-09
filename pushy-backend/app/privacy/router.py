@@ -1,25 +1,15 @@
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from .. import crypto, db
+from .. import crypto
+from ..core.dependencies import get_conn
+from ..core.errors import api_error
 from . import service
 
 router = APIRouter()
-
-
-def get_conn():
-    conn = db.connect()
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-def err(status, code, message):
-    raise HTTPException(status_code=status, detail={"error": {"code": code, "message": message}})
 
 
 @router.get("/storage")
@@ -45,24 +35,24 @@ class RestoreIn(BaseModel):
 @router.post("/backup")
 def backup(body: PassphraseIn, conn=Depends(get_conn)):
     if not body.passphrase:
-        err(400, "validation_error", "A passphrase is required to encrypt the backup.")
+        api_error(400, "validation_error", "A passphrase is required to encrypt the backup.")
     try:
         path = service.make_backup(conn, body.passphrase, body.path)
     except OSError as e:
-        err(400, "invalid_path", "Cannot write backup there: %s" % e)
+        api_error(400, "invalid_path", "Cannot write backup there: %s" % e)
     return {"path": path, "bytes": os.path.getsize(path)}
 
 
 @router.post("/restore")
 def restore(body: RestoreIn, conn=Depends(get_conn)):
     if not os.path.exists(body.path):
-        err(404, "not_found", "Backup file not found.")
+        api_error(404, "not_found", "Backup file not found.")
     try:
         data = service.read_backup(body.path, body.passphrase)
     except crypto.WrongPassphrase:
-        err(400, "bad_passphrase", "Wrong passphrase — backup could not be decrypted.")
+        api_error(400, "bad_passphrase", "Wrong passphrase - backup could not be decrypted.")
     except (ValueError, KeyError) as e:
-        err(400, "invalid_backup", str(e))
+        api_error(400, "invalid_backup", str(e))
     service.import_data(conn, data)
     return {"restored": True}
 
@@ -88,7 +78,7 @@ def delete_all(body: Optional[DeleteAllIn] = None, conn=Depends(get_conn)):
 @router.post("/lock")
 def lock(body: PassphraseIn, conn=Depends(get_conn)):
     if not body.passphrase:
-        err(400, "validation_error", "A passphrase is required.")
+        api_error(400, "validation_error", "A passphrase is required.")
     conn.execute(
         "UPDATE profile SET app_lock_hash=? WHERE id=1",
         (crypto.hash_passphrase(body.passphrase),),
@@ -104,6 +94,6 @@ def unlock(body: PassphraseIn, conn=Depends(get_conn)):
     if not row or not row["app_lock_hash"]:
         return {"unlocked": True}
     if not crypto.verify_passphrase(body.passphrase, row["app_lock_hash"]):
-        err(400, "bad_passphrase", "Wrong passphrase.")
+        api_error(400, "bad_passphrase", "Wrong passphrase.")
     service.set_locked(False)
     return {"unlocked": True}

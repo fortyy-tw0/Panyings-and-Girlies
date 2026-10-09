@@ -9,10 +9,12 @@ from datetime import date as dt_date
 from datetime import datetime
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
-from .. import crypto, db
+from .. import crypto
+from ..core.dependencies import get_conn
+from ..core.errors import api_error
 
 router = APIRouter()
 
@@ -25,23 +27,8 @@ CONDITION_STATUSES = (
 CONTRACEPTION_OPTIONS = ("condom", "pills", "other", "none", "not_sure")
 
 
-def get_conn():
-    conn = db.connect()
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
 def now():
     return datetime.now().isoformat(timespec="seconds")
-
-
-def err(status, code, message):
-    raise HTTPException(
-        status_code=status,
-        detail={"error": {"code": code, "message": message}},
-    )
 
 
 # ---------- onboarding ----------
@@ -74,7 +61,7 @@ def onboarding(body: OnboardingIn, conn=Depends(get_conn)):
         # see inside the encrypted payload, and nothing may ever promote
         # suspected_not_diagnosed to diagnosed automatically
         if hc.status not in CONDITION_STATUSES:
-            err(400, "validation_error", "Invalid health context status.")
+            api_error(400, "validation_error", "Invalid health context status.")
         nonce, ct = crypto.encrypt_text(
             key, json.dumps({"kind": hc.kind, "condition_name": hc.condition_name,
                              "status": hc.status})
@@ -137,7 +124,7 @@ def check_overlap(conn, start: str, end: str, exclude_id=None):
         params.append(exclude_id)
     clash = conn.execute(sql, params).fetchone()
     if clash:
-        err(409, "overlap", "This period overlaps an existing entry (id %d)." % clash["id"])
+        api_error(409, "overlap", "This period overlaps an existing entry (id %d)." % clash["id"])
 
 
 @router.get("/periods")
@@ -163,7 +150,7 @@ def create_period(body: PeriodIn, conn=Depends(get_conn)):
 @router.put("/periods/{period_id}")
 def update_period(period_id: int, body: PeriodIn, conn=Depends(get_conn)):
     if not conn.execute("SELECT 1 FROM period WHERE id=?", (period_id,)).fetchone():
-        err(404, "not_found", "Period not found.")
+        api_error(404, "not_found", "Period not found.")
     s, e = body.start_date.isoformat(), (body.end_date.isoformat() if body.end_date else FAR_FUTURE)
     check_overlap(conn, s, e, exclude_id=period_id)
     conn.execute(
@@ -180,7 +167,7 @@ def delete_period(period_id: int, conn=Depends(get_conn)):
     cur = conn.execute("DELETE FROM period WHERE id=?", (period_id,))
     conn.commit()
     if cur.rowcount == 0:
-        err(404, "not_found", "Period not found.")
+        api_error(404, "not_found", "Period not found.")
 
 
 # ---------- daily logs ----------
@@ -219,9 +206,9 @@ def create_log(body: LogIn, conn=Depends(get_conn)):
         "SELECT id, enabled FROM symptom_category WHERE key=?", (body.category,)
     ).fetchone()
     if not cat:
-        err(404, "not_found", "Unknown symptom category '%s'." % body.category)
+        api_error(404, "not_found", "Unknown symptom category '%s'." % body.category)
     if not cat["enabled"]:
-        err(400, "category_disabled", "Category '%s' is disabled." % body.category)
+        api_error(400, "category_disabled", "Category '%s' is disabled." % body.category)
     key = crypto.app_key()
     nonce, ct = crypto.encrypt_text(key, body.note) if body.note else (None, None)
     conn.execute(
@@ -313,7 +300,7 @@ def delete_note(note_id: int, conn=Depends(get_conn)):
     cur = conn.execute("DELETE FROM note WHERE id=?", (note_id,))
     conn.commit()
     if cur.rowcount == 0:
-        err(404, "not_found", "Note not found.")
+        api_error(404, "not_found", "Note not found.")
 
 
 # ---------- sexual activity (optional, encrypted) ----------
@@ -358,7 +345,7 @@ def delete_activity(activity_id: int, conn=Depends(get_conn)):
     cur = conn.execute("DELETE FROM sexual_activity WHERE id=?", (activity_id,))
     conn.commit()
     if cur.rowcount == 0:
-        err(404, "not_found", "Entry not found.")
+        api_error(404, "not_found", "Entry not found.")
 
 
 # ---------- contraception preference ----------

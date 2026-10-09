@@ -2,18 +2,10 @@
 
 from fastapi import APIRouter, Depends
 
-from .. import db
+from ..core.dependencies import get_conn
 from . import engine
 
 router = APIRouter()
-
-
-def get_conn():
-    conn = db.connect()
-    try:
-        yield conn
-    finally:
-        conn.close()
 
 
 def _periods(conn):

@@ -3,25 +3,15 @@ from datetime import datetime, timedelta
 from datetime import time as dt_time
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
-from .. import crypto, db
+from .. import crypto
+from ..core.dependencies import get_conn
+from ..core.errors import api_error
 from . import service
 
 router = APIRouter()
-
-
-def get_conn():
-    conn = db.connect()
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-def err(status, code, message):
-    raise HTTPException(status_code=status, detail={"error": {"code": code, "message": message}})
 
 
 def _now(at: Optional[datetime]) -> datetime:
@@ -89,7 +79,7 @@ class RespondIn(BaseModel):
 def respond(event_id: int, body: RespondIn, conn=Depends(get_conn)):
     r = service.respond(conn, event_id, body.status)
     if r is None:
-        err(404, "not_found", "Reminder event not found.")
+        api_error(404, "not_found", "Reminder event not found.")
     return {"event_id": event_id, "status": body.status}
 
 
@@ -164,4 +154,4 @@ def delete_pt(reminder_id: int, conn=Depends(get_conn)):
     )
     conn.commit()
     if cur.rowcount == 0:
-        err(404, "not_found", "Reminder not found.")
+        api_error(404, "not_found", "Reminder not found.")
