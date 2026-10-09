@@ -32,10 +32,28 @@ def test_spec_example_window_and_confidence():
     assert r["expected_duration"] == 5
 
 
-def test_need_more_history_under_3_cycles():
+def test_rough_estimate_with_some_history():
+    # v2.1: 1 valid cycle (28d) -> estimate = last start + 28, +/-5d window, "rough"
     r = engine.compute(periods(["2025-01-01", "2025-01-29"]))
     assert r["status"] == "need_more_history"
+    assert r["confidence"] == "rough"
+    assert r["estimate"] == "2025-02-26"
+    assert r["window"] == ["2025-02-21", "2025-03-03"]
+
+
+def test_rough_estimate_defaults_to_28():
+    # a single start, no cycles at all -> 28-day fallback
+    r = engine.compute(periods(["2025-01-01"]))
+    assert r["status"] == "need_more_history"
+    assert r["estimate"] == "2025-01-29"
+    assert r["confidence"] == "rough"
+
+
+def test_no_periods_no_estimate():
+    r = engine.compute([])
+    assert r["status"] == "need_more_history"
     assert r["estimate"] is None
+    assert r["confidence"] is None
 
 
 def test_regular_cycles_high_confidence():

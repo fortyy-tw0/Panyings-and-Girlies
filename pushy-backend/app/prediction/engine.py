@@ -74,6 +74,20 @@ def compute(periods):
         "flags": flags,
     }
     if len(valid) < MIN_CYCLES_FOR_PREDICTION:
+        # v2.1: still give new users a rough, clearly labeled estimate.
+        # estimate = last_start + (median of valid cycles, or 28 if none);
+        # window = estimate +/- 5 days; confidence "rough".
+        if starts:
+            anchor = int(round(median([c["length"] for c in valid]))) if valid else 28
+            est = starts[-1] + timedelta(days=anchor)
+            result.update(
+                estimate=est.isoformat(),
+                window=[
+                    (est - timedelta(days=5)).isoformat(),
+                    (est + timedelta(days=5)).isoformat(),
+                ],
+                confidence="rough",
+            )
         result["explanation"] = _explain(starts, cycles, valid, 0)
         return result
 
