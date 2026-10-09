@@ -1,11 +1,12 @@
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import db
+from .records import router as records_router
 
 app = FastAPI(title="Pu-shy Backend", version="0.2.0")
 
@@ -25,9 +26,22 @@ async def validation_handler(request: Request, exc: RequestValidationError):
     )
 
 
+@app.exception_handler(HTTPException)
+async def http_exc_handler(request: Request, exc: HTTPException):
+    if isinstance(exc.detail, dict) and "error" in exc.detail:
+        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": "error", "message": str(exc.detail)}},
+    )
+
+
 @app.on_event("startup")
 def startup():
     db.init_db()
+
+
+app.include_router(records_router)
 
 
 @app.get("/health")
