@@ -1,29 +1,36 @@
 /**
- * Reference adapter for op-sqlite on React Native (Option C).
+ * Adapter for @op-engineering/op-sqlite on React Native (the phone DB).
  *
- * Typed loosely on purpose so this file compiles without the op-sqlite
- * package installed. In the RN app:
+ * IMPORTANT: op-sqlite's `execute()` is ASYNC — use `executeSync()`, which
+ * returns QueryResult synchronously and keeps the whole Db interface sync.
+ * Verified against the frontend's usage: `open({ name, encryptionKey })`
+ * then `d.executeSync(sql, params)`.
  *
- *   import { open } from 'op-sqlite';
+ * In the RN app:
+ *
+ *   import { open } from '@op-engineering/op-sqlite';
  *   const raw = open({ name: 'siklo.db', encryptionKey });
  *   const db = opSqliteDb(raw);
  *
- * For whole-DB encryption use op-sqlite's SQLCipher build instead of the
- * field-level crypto in crypto.ts (v2.1 Section 8).
+ * encryptionKey should come from expo-secure-store, never hard-coded.
+ * (The frontend's current db.ts uses 'TEST-ONLY-change-me' — replace it.)
  */
 
 import type { Db } from "./db";
 
 type OpSqliteRaw = {
-  execute(sql: string, params?: unknown[]): {
-    rows: { length: number; item(i: number): Record<string, unknown> } | Record<string, unknown>[];
+  executeSync(sql: string, params?: unknown[]): {
+    rows?: { length: number; item(i: number): Record<string, unknown> } | Record<string, unknown>[];
     rowsAffected?: number;
   };
-  executeSync?(sql: string, params?: unknown[]): unknown;
 };
 
-function rowsOf(result: { rows: unknown }): Record<string, unknown>[] {
-  const rows = (result as { rows: { length: number; item(i: number): Record<string, unknown> } | Record<string, unknown>[] }).rows;
+function rowsOf(result: { rows?: unknown }): Record<string, unknown>[] {
+  const rows = result?.rows as
+    | { length: number; item(i: number): Record<string, unknown> }
+    | Record<string, unknown>[]
+    | undefined;
+  if (!rows) return [];
   if (Array.isArray(rows)) return rows;
   const out: Record<string, unknown>[] = [];
   for (let i = 0; i < rows.length; i++) out.push(rows.item(i));
@@ -36,11 +43,11 @@ export function opSqliteDb(raw: OpSqliteRaw): Db {
   return {
     exec: (sql) => {
       for (const stmt of sql.split(";").map((s) => s.trim()).filter(Boolean)) {
-        raw.execute(stmt);
+        raw.executeSync(stmt);
       }
     },
-    run: (sql, ...params) => raw.execute(sql, norm(params)).rowsAffected ?? 0,
-    get: (sql, ...params) => rowsOf(raw.execute(sql, norm(params)))[0] as never,
-    all: (sql, ...params) => rowsOf(raw.execute(sql, norm(params))) as never[],
+    run: (sql, ...params) => raw.executeSync(sql, norm(params)).rowsAffected ?? 0,
+    get: (sql, ...params) => rowsOf(raw.executeSync(sql, norm(params)))[0] as never,
+    all: (sql, ...params) => rowsOf(raw.executeSync(sql, norm(params))) as never[],
   };
 }
