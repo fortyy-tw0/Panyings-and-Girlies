@@ -1,3 +1,5 @@
 node_modules/
 data/
 *.pushybackup
+demo.db*
+pushy.key
