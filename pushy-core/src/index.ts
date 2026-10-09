@@ -1,0 +1,19 @@
+/**
+ * Public entry point — what the React Native app imports.
+ *
+ * Phone:      createApi(opSqliteDb(open({ name: "pushy.db", encryptionKey })), { dataDir, paths })
+ * Laptop/test: createApi(openDb(":memory:"), { dataDir })
+ */
+
+export { createApi, type PushyApi, type ApiOptions } from "./api";
+export { openDb } from "./db.node";
+export { opSqliteDb } from "./db.opsqlite";
+export { initDb, SCHEMA, type Db } from "./db";
+export { ApiError, apiError } from "./errors";
+export {
+  compute as computePrediction,
+  getStatsForAi,
+  flagMessages,
+  type PeriodRow,
+  type Prediction,
+} from "./prediction";

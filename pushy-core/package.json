@@ -1,0 +1,17 @@
+{
+  "name": "pushy-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pu-shy backend modules in TypeScript — Option C on-device port. Same logic and JSON shapes as pushy-backend (Python/FastAPI), minus the HTTP layer.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
