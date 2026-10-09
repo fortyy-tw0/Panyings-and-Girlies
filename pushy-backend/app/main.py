@@ -1,4 +1,5 @@
 import os
+import secrets
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -53,9 +54,25 @@ async def lock_guard(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def token_guard(request: Request, call_next):
+    # v2.1: CORS alone does not stop other local programs calling 127.0.0.1.
+    # A random per-launch bearer token must accompany every request. It is
+    # never written to disk; PUSHY_API_TOKEN overrides it for dev/tests.
+    expected = getattr(app.state, "api_token", None) or os.environ.get("PUSHY_API_TOKEN")
+    if expected and request.headers.get("authorization") != f"Bearer {expected}":
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"code": "unauthorized", "message": "Missing or wrong API token."}},
+        )
+    return await call_next(request)
+
+
 @app.on_event("startup")
 def startup():
     db.init_db()
+    app.state.api_token = os.environ.get("PUSHY_API_TOKEN") or secrets.token_urlsafe(32)
+    print("Pu-shy API token (hand to the frontend):", app.state.api_token)
     conn = db.connect()
     try:
         privacy_service.load_lock_state(conn)
