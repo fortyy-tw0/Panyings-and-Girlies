@@ -3,6 +3,8 @@
 Base URL: `http://127.0.0.1:8420` — localhost only, no internet required.
 All bodies are JSON. Dates are `YYYY-MM-DD`; times are `HH:MM` (local); datetimes are ISO `YYYY-MM-DDTHH:MM:SS`.
 
+**Auth (v2.1):** every request needs `Authorization: Bearer <token>`. The backend generates a random token at each launch and prints it to the console (never written to disk). Missing/wrong token → `401 {"error":{"code":"unauthorized"}}`. For dev/tests, set `PUSHY_API_TOKEN` to fix the token.
+
 **Error format (all endpoints):**
 
 ```json
@@ -48,9 +50,10 @@ Endpoints marked **[B2 pending]** are implemented by the AI developer; the JSON 
 ### `GET /predictions/next`
 ```json
 { "status": "ok|need_more_history", "estimate": "2026-10-29",
-  "window": ["2026-10-25", "2026-11-03"], "confidence": "low",
+  "window": ["2026-10-25", "2026-11-03"], "confidence": "high|medium|low|rough",
   "expected_duration": 5, "flags": ["high_variability"] }
 ```
+With <3 valid cycles but ≥1 period start, `status` stays `need_more_history` and `confidence: "rough"` with an estimate ±5 days (28-day fallback). UI label: *"Rough estimate — gets better as you log more periods."*
 ### `GET /predictions/explain` → `{dates_used[], cycle_lengths[], formula}` — for "Why this prediction?"
 ### `GET /insights` → stats + `pattern_flags: [{key, message}]` (fixed neutral text) + `symptom_patterns[]`
 
@@ -93,7 +96,7 @@ Nothing is persisted: no tables, no files, no backups, no log lines. Sessions di
 
 ### `GET /storage` → `{pushy_db_bytes, library_db_bytes, model_bytes, key_bytes, total_bytes}`
 ### `GET /export` → JSON dump of all user data (decrypted; chats never exist on disk)
-### `POST /backup` — `{passphrase}` → `{path, bytes}` · writes `data/backup-<date>.pushybackup`
+### `POST /backup` — `{passphrase, path?}` → `{path, bytes}` · default `data/backup-<date>.pushybackup`; pass `path` to save somewhere outside app storage (survives app deletion)
 ### `POST /restore` — `{passphrase, path}` → `{restored: true}` · `400 bad_passphrase` on wrong key
 ### `DELETE /all` — `{delete_model?: bool}` → `204` · wipes all user tables + in-memory chats
 ### `POST /lock` — `{passphrase}` → `{locked: true}`
