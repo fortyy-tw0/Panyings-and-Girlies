@@ -1,5 +1,4 @@
 # Panyings-and-Girlies
-Appbuilders Hackathon
 
 Your cycle. Your device. Your data.
 
