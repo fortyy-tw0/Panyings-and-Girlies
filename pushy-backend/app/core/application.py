@@ -6,7 +6,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .. import db
+from .. import db, llm
+from ..companion import router as companion_router
 from ..prediction import router as prediction_router
 from ..privacy import router as privacy_router
 from ..privacy import service as privacy_service
@@ -14,6 +15,8 @@ from ..records import router as records_router
 from ..reminders import router as reminders_router
 
 LOCK_EXEMPT_PATHS = {"/health", "/unlock", "/docs", "/openapi.json"}
+# The docs page can't send a token, and browsers send OPTIONS "preflight" requests without one.
+TOKEN_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
 
 def create_app() -> FastAPI:
@@ -30,7 +33,7 @@ def create_app() -> FastAPI:
             "status": "ok",
             "offline": True,
             "db": "ok",
-            "model_loaded": bool(os.environ.get("PUSHY_MODEL_PATH")),
+            "model_loaded": llm.is_model_ready(),
         }
 
     return app
@@ -58,6 +61,8 @@ def configure_middleware(app: FastAPI) -> None:
         # CORS alone does not stop other local programs calling 127.0.0.1.
         # The per-launch bearer token is never written to disk; PUSHY_API_TOKEN
         # overrides it for dev/tests.
+        if request.method == "OPTIONS" or request.url.path in TOKEN_EXEMPT_PATHS:
+            return await call_next(request)
         expected = getattr(app.state, "api_token", None) or os.environ.get(
             "PUSHY_API_TOKEN"
         )
@@ -112,3 +117,4 @@ def include_routers(app: FastAPI) -> None:
     app.include_router(prediction_router)
     app.include_router(reminders_router)
     app.include_router(privacy_router)
+    app.include_router(companion_router)
