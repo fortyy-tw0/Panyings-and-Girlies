@@ -10,6 +10,7 @@ export { openDb } from "./db.node";
 export { opSqliteDb } from "./db.opsqlite";
 export { initDb, SCHEMA, type Db } from "./db";
 export { ApiError, apiError } from "./errors";
+export type { Retention, Consent, ConsentKey, ChatMessage, ChatRole } from "./chat";
 export {
   compute as computePrediction,
   getStatsForAi,

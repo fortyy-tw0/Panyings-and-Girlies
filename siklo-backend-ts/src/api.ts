@@ -14,6 +14,7 @@ import * as records from "./records";
 import * as prediction from "./prediction";
 import * as reminders from "./reminders";
 import * as privacy from "./privacy";
+import * as chat from "./chat";
 
 export interface ApiOptions {
   dataDir: string;
@@ -23,6 +24,8 @@ export interface ApiOptions {
 export function createApi(db: Db, opts: ApiOptions) {
   initDb(db);
   const D = opts.dataDir;
+  const ramChats = chat.newRamStore(); // retention='off' sessions live here only
+  chat.sweepExpired(db);
 
   return {
     // records
@@ -48,20 +51,17 @@ export function createApi(db: Db, opts: ApiOptions) {
 
     // predictions & insights
     getNextPrediction: () => {
-
       const { explanation, ...rest } = prediction.compute(
-        db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period")
+        db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period WHERE kind='period'")
       );
       return rest;
     },
     getPredictionExplain: () => {
-
-      const r = prediction.compute(db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period"));
+      const r = prediction.compute(db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period WHERE kind='period'"));
       return { ...(r.explanation ?? {}), status: r.status, estimate: r.estimate, window: r.window, confidence: r.confidence };
     },
     getInsights: () => {
-
-      const periods = db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period");
+      const periods = db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period WHERE kind='period'");
       const r = prediction.compute(periods);
       return {
         status: r.status,
@@ -74,7 +74,23 @@ export function createApi(db: Db, opts: ApiOptions) {
         symptom_patterns: prediction.symptomPatterns(db, periods),
       };
     },
-    getStatsForAi: () => prediction.getStatsForAi(db), // B2 calls this directly
+    getStatsForAi: () => prediction.getStatsForAi(db), // aggregate stats only; per-record data goes through getCompanionContext
+
+    // chat sessions — retention 'off' is RAM-only; consent is per session,
+    // per data type. The companion reads records only via getCompanionContext.
+    startChatSession: (input: { mode?: string; retention?: chat.Retention } = {}) =>
+      chat.startSession(db, ramChats, input),
+    addChatMessage: (sessionId: string, input: { role: chat.ChatRole; text: string; sources?: unknown[] }) =>
+      chat.addMessage(db, ramChats, D, sessionId, input),
+    getChatMessages: (sessionId: string) => chat.getMessages(db, ramChats, D, sessionId),
+    setChatConsent: (sessionId: string, consent: chat.Consent) =>
+      chat.setConsent(db, ramChats, sessionId, consent),
+    getChatConsent: (sessionId: string) => chat.getConsent(db, ramChats, sessionId),
+    setChatRetention: (sessionId: string, retention: chat.Retention) =>
+      chat.setRetention(db, ramChats, D, sessionId, retention),
+    listChatSessions: () => chat.listSessions(db, ramChats),
+    endChatSession: (sessionId: string) => chat.endSession(db, ramChats, sessionId),
+    getCompanionContext: (sessionId: string) => chat.getCompanionContext(db, ramChats, D, sessionId),
 
     // reminders
     getPillReminder: () => (reminders.getPillReminder(db, D)),
@@ -92,7 +108,6 @@ export function createApi(db: Db, opts: ApiOptions) {
     getStorage: () => (privacy.storageReport(opts.paths ?? {})),
     export: () => (privacy.exportData(db, D)),
     backup: (passphrase: string, destPath?: string) => {
-
       if (!passphrase) apiError(400, "validation_error", "A passphrase is required to encrypt the backup.");
       try {
         const path = privacy.makeBackup(db, D, passphrase, destPath);
@@ -103,7 +118,6 @@ export function createApi(db: Db, opts: ApiOptions) {
       }
     },
     restore: (passphrase: string, backupPath: string) => {
-
       let data;
       try {
         data = privacy.readBackup(backupPath, passphrase);
@@ -114,8 +128,8 @@ export function createApi(db: Db, opts: ApiOptions) {
       return { restored: true };
     },
     deleteAll: (opts2: { deleteModel?: boolean } = {}) => {
-
       privacy.wipeUserData(db);
+      ramChats.clear();
       if (opts2.deleteModel && opts.paths?.model) {
         try { fs.unlinkSync(opts.paths.model); } catch { /* ignore */ }
       }

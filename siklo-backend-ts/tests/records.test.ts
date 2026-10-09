@@ -55,6 +55,25 @@ describe("records", () => {
     );
   });
 
+  it("spotting overlaps freely and never feeds predictions", () => {
+    api.createPeriod({ start_date: "2026-09-01", end_date: "2026-09-05" });
+    // spotting inside a period's date range is allowed (inter-period bleeding)
+    const s = api.createPeriod({ start_date: "2026-09-03", kind: "spotting", end_state: "ended", end_date: "2026-09-03" });
+    expect(s.period.kind).toBe("spotting");
+    expect(api.listPeriods()).toHaveLength(2);
+    // and it doesn't pollute the prediction math
+    expect(api.getNextPrediction().cycles_used).toBe(0);
+  });
+
+  it("end_state validation keeps unknown/ongoing honest", () => {
+    expect(() =>
+      api.createPeriod({ start_date: "2026-10-01", end_state: "ended" })
+    ).toThrowError(expect.objectContaining({ status: 400 }));
+    const u = api.createPeriod({ start_date: "2026-10-10", end_state: "unknown" });
+    expect(u.period.end_date).toBeNull();
+    expect(u.period.end_state).toBe("unknown");
+  });
+
   it("log upsert + disabled category rejected", () => {
     api.createLog({ date: "2026-10-01", category: "cramps", value: "2" });
     const logs = api.createLog({ date: "2026-10-01", category: "cramps", value: "3" });

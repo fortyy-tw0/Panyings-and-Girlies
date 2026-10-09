@@ -77,21 +77,30 @@ export function onboarding(db: Db, dataDir: string, input: OnboardingInput) {
 
 // ---------- periods ----------
 
+export type PeriodKind = "period" | "spotting";
+export type EndState = "ended" | "ongoing" | "unknown";
+
 export interface PeriodInput {
   start_date: string;
   end_date?: string | null;
+  /** 'period' (default) or 'spotting' — spotting never affects predictions or overlap. */
+  kind?: PeriodKind;
+  /** 'ended' | 'ongoing' | 'unknown'. Defaults: ended if end_date given, else ongoing. */
+  end_state?: EndState;
   flow_level?: number | null;
 }
 
+const PERIOD_COLS = "id, start_date, end_date, kind, end_state, flow_level";
+
 export function listPeriods(db: Db) {
-  return db
-    .all("SELECT * FROM period ORDER BY start_date")
-    .map((r) => ({ id: r.id, start_date: r.start_date, end_date: r.end_date, flow_level: r.flow_level }));
+  return db.all(`SELECT ${PERIOD_COLS} FROM period ORDER BY start_date`);
 }
 
 function checkOverlap(db: Db, start: string, end: string, excludeId?: number) {
+  // Spotting is inter-period bleeding — it may sit inside a period's dates
+  // and never counts toward cycle math, so it is excluded from overlap too.
   const sql =
-    "SELECT id FROM period WHERE NOT (COALESCE(end_date, ?) < ? OR start_date > ?)" +
+    "SELECT id FROM period WHERE kind='period' AND NOT (COALESCE(end_date, ?) < ? OR start_date > ?)" +
     (excludeId !== undefined ? " AND id != ?" : "");
   const params: unknown[] = excludeId !== undefined ? [FAR_FUTURE, start, end, excludeId] : [FAR_FUTURE, start, end];
   const clash = db.get(sql, ...params);
@@ -108,31 +117,43 @@ function validatePeriod(input: PeriodInput) {
       apiError(400, "validation_error", "end_date cannot be before start_date");
     }
   }
+  const endState = input.end_state ?? (input.end_date ? "ended" : "ongoing");
+  if (endState === "ended" && !input.end_date) {
+    apiError(400, "validation_error", "end_state 'ended' requires end_date");
+  }
+  if (endState !== "ended" && input.end_date) {
+    apiError(400, "validation_error", `end_state '${endState}' cannot have end_date`);
+  }
 }
 
 export function createPeriod(db: Db, input: PeriodInput) {
   validatePeriod(input);
-  checkOverlap(db, input.start_date, input.end_date ?? FAR_FUTURE);
+  const kind = input.kind ?? "period";
+  const endState = input.end_state ?? (input.end_date ? "ended" : "ongoing");
+  if (kind === "period") checkOverlap(db, input.start_date, input.end_date ?? FAR_FUTURE);
   db.run(
-    "INSERT INTO period(start_date, end_date, flow_level, created_at, updated_at) VALUES (?,?,?,?,?)",
-    input.start_date, input.end_date ?? null, input.flow_level ?? null, nowIso(), nowIso()
+    "INSERT INTO period(start_date, end_date, kind, end_state, flow_level, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+    input.start_date, input.end_date ?? null, kind, endState, input.flow_level ?? null, nowIso(), nowIso()
   );
-  const row = db.get("SELECT * FROM period ORDER BY id DESC LIMIT 1")!;
-  return { period: { id: row.id, start_date: row.start_date, end_date: row.end_date, flow_level: row.flow_level } };
+  const row = db.get(`SELECT ${PERIOD_COLS} FROM period ORDER BY id DESC LIMIT 1`)!;
+  return { period: row };
 }
 
 export function updatePeriod(db: Db, id: number, input: PeriodInput) {
-  if (!db.get("SELECT 1 FROM period WHERE id=?", id)) {
+  const existing = db.get(`SELECT ${PERIOD_COLS} FROM period WHERE id=?`, id);
+  if (!existing) {
     apiError(404, "not_found", "Period not found.");
   }
   validatePeriod(input);
-  checkOverlap(db, input.start_date, input.end_date ?? FAR_FUTURE, id);
+  const kind = input.kind ?? (existing!.kind as PeriodKind) ?? "period";
+  const endState = input.end_state ?? (input.end_date ? "ended" : "ongoing");
+  if (kind === "period") checkOverlap(db, input.start_date, input.end_date ?? FAR_FUTURE, id);
   db.run(
-    "UPDATE period SET start_date=?, end_date=?, flow_level=?, updated_at=? WHERE id=?",
-    input.start_date, input.end_date ?? null, input.flow_level ?? null, nowIso(), id
+    "UPDATE period SET start_date=?, end_date=?, kind=?, end_state=?, flow_level=?, updated_at=? WHERE id=?",
+    input.start_date, input.end_date ?? null, kind, endState, input.flow_level ?? null, nowIso(), id
   );
-  const row = db.get("SELECT * FROM period WHERE id=?", id)!;
-  return { period: { id: row.id, start_date: row.start_date, end_date: row.end_date, flow_level: row.flow_level } };
+  const row = db.get(`SELECT ${PERIOD_COLS} FROM period WHERE id=?`, id)!;
+  return { period: row };
 }
 
 export function deletePeriod(db: Db, id: number): void {

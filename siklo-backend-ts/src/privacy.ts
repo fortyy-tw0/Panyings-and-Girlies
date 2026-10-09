@@ -86,11 +86,29 @@ export function exportData(db: Db, dataDir: string) {
       note: dec(r.nonce, r.note_enc),
       done: !!r.done,
     })),
+    // Only persisted sessions exist here — 'off' chats live in RAM and are
+    // never exported or backed up.
+    chat_sessions: all("chat_session").map((s) => ({
+      mode: s.mode,
+      retention: s.retention,
+      consent: JSON.parse(String(s.consent_json ?? "{}")),
+      expires_at: s.expires_at,
+      created_at: s.created_at,
+      messages: db
+        .all("SELECT role, text_enc, nonce, sources_json, created_at FROM chat_message WHERE session_id=? ORDER BY id", s.id)
+        .map((m) => ({
+          role: m.role,
+          text: dec(m.nonce, m.text_enc),
+          sources: m.sources_json ? JSON.parse(String(m.sources_json)) : null,
+          created_at: m.created_at,
+        })),
+    })),
   };
 }
 
 export function wipeUserData(db: Db): void {
   for (const t of [
+    "chat_message", "chat_session",
     "daily_log", "note", "sexual_activity", "period", "health_context",
     "reminder_event", "pregnancy_test_reminder", "symptom_category",
     "pill_reminder", "contraception_pref", "profile",
@@ -128,8 +146,9 @@ export function importData(db: Db, dataDir: string, data: Record<string, unknown
   }
   for (const r of (data.periods ?? []) as Record<string, unknown>[]) {
     db.run(
-      "INSERT INTO period(start_date, end_date, flow_level, created_at, updated_at) VALUES (?,?,?,?,?)",
-      r.start_date, r.end_date ?? null, r.flow_level ?? null, r.created_at ?? nowIso(), r.updated_at ?? nowIso()
+      "INSERT INTO period(start_date, end_date, kind, end_state, flow_level, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+      r.start_date, r.end_date ?? null, r.kind ?? "period", r.end_state ?? "ended",
+      r.flow_level ?? null, r.created_at ?? nowIso(), r.updated_at ?? nowIso()
     );
   }
   for (const c of (data.symptom_categories ?? []) as Record<string, unknown>[]) {
@@ -191,6 +210,22 @@ export function importData(db: Db, dataDir: string, data: Record<string, unknown
       "INSERT INTO pregnancy_test_reminder(date, note_enc, nonce, done, created_at) VALUES (?,?,?,?,?)",
       r.date, enc.ct, enc.nonce, r.done ? 1 : 0, nowIso()
     );
+  }
+  for (const s of (data.chat_sessions ?? []) as Record<string, unknown>[]) {
+    const sid = crypto.randomBytes(8).toString("hex");
+    db.run(
+      "INSERT INTO chat_session(id, mode, retention, consent_json, expires_at, created_at) VALUES (?,?,?,?,?,?)",
+      sid, s.mode ?? "companion", s.retention ?? "manual",
+      JSON.stringify(s.consent ?? {}), s.expires_at ?? null, s.created_at ?? nowIso()
+    );
+    for (const m of (s.messages ?? []) as Record<string, unknown>[]) {
+      const { nonce, ct } = crypto.encryptText(key, String(m.text));
+      db.run(
+        "INSERT INTO chat_message(session_id, role, text_enc, nonce, sources_json, created_at) VALUES (?,?,?,?,?,?)",
+        sid, m.role ?? "user", ct, nonce,
+        m.sources ? JSON.stringify(m.sources) : null, m.created_at ?? nowIso()
+      );
+    }
   }
 }
 

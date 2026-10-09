@@ -45,10 +45,10 @@ export interface CycleLen {
 }
 
 export interface Prediction {
-  status: "ok" | "need_more_history";
+  status: "ok" | "not_enough_information";
   estimate: string | null;
   window: [string, string] | null;
-  confidence: "high" | "medium" | "low" | "rough" | null;
+  confidence: "high" | "medium" | "low" | null;
   expected_duration: number | null;
   cycles_used: number;
   median_cycle_len: number | null;
@@ -89,7 +89,7 @@ export function compute(periods: PeriodRow[]): Prediction {
 
   const flags: string[] = excluded.length ? ["missing_data"] : [];
   const result: Prediction = {
-    status: "need_more_history",
+    status: "not_enough_information",
     estimate: null,
     window: null,
     confidence: null,
@@ -101,14 +101,8 @@ export function compute(periods: PeriodRow[]): Prediction {
   };
 
   if (valid.length < MIN_CYCLES_FOR_PREDICTION) {
-    // v2.1: rough, clearly labeled estimate for new users.
-    if (starts.length) {
-      const anchor = valid.length ? Math.round(median(valid.map((c) => c.length))) : 28;
-      const est = addDays(parseDate(starts[starts.length - 1]), anchor);
-      result.estimate = toISO(est);
-      result.window = [toISO(addDays(est, -5)), toISO(addDays(est, 5))];
-      result.confidence = "rough";
-    }
+    // Fewer than three completed intervals → "Not enough information."
+    // No fabricated estimate (never assume 28 days).
     result.explanation = explain(starts, cycles, valid, 0);
     return result;
   }
@@ -209,15 +203,40 @@ export function symptomPatterns(
 
 /** Compact stats JSON for the Companion (B2). ~150 tokens, ~14 fields. */
 export function getStatsForAi(db: Db) {
-  const periods = db.all<PeriodRow>("SELECT start_date, end_date FROM period");
+  const periods = db.all<PeriodRow>(
+    "SELECT start_date, end_date FROM period WHERE kind='period'"
+  );
   const p = compute(periods);
+  const lastStart = periods.length
+    ? periods.map((r) => r.start_date).sort().at(-1)!
+    : null;
+
+  // Current cycle position for the companion's CycleSummary.
+  let cycleDay: number | null = null;
+  let phase: string | null = null;
+  if (lastStart) {
+    const today = new Date();
+    cycleDay = diffDays(parseDate(lastStart), today) + 1;
+    const last = periods.find((r) => r.start_date === lastStart);
+    const inPeriod =
+      last && (!last.end_date || toISO(today) <= last.end_date);
+    if (inPeriod) {
+      phase = "menstrual";
+    } else if (p.estimate) {
+      const untilEst = diffDays(today, parseDate(p.estimate));
+      if (untilEst >= 12 && untilEst <= 16) phase = "ovulatory";
+      else if (untilEst > 16) phase = "follicular";
+      else phase = "luteal";
+    }
+  }
+
   return {
     cycles_used: p.cycles_used,
     median_cycle_len: p.median_cycle_len,
     cycle_range: p.cycle_range,
-    last_period_start: periods.length
-      ? periods.map((r) => r.start_date).sort().at(-1)
-      : null,
+    last_period_start: lastStart,
+    cycle_day: cycleDay,
+    phase,
     next_estimate: p.estimate,
     window: p.window,
     confidence: p.confidence,

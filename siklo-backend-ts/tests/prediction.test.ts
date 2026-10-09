@@ -30,24 +30,31 @@ describe("prediction engine", () => {
     expect(r.expected_duration).toBe(5);
   });
 
-  it("rough estimate with 1 valid cycle", () => {
+  it("2 starts (1 interval) → not enough information, no fabricated estimate", () => {
     const r = compute(periods(["2025-01-01", "2025-01-29"]));
-    expect(r.status).toBe("need_more_history");
-    expect(r.confidence).toBe("rough");
-    expect(r.estimate).toBe("2025-02-26");
-    expect(r.window).toEqual(["2025-02-21", "2025-03-03"]);
-  });
-
-  it("rough estimate defaults to 28 days", () => {
-    const r = compute(periods(["2025-01-01"]));
-    expect(r.estimate).toBe("2025-01-29");
-    expect(r.confidence).toBe("rough");
-  });
-
-  it("no periods → nulls", () => {
-    const r = compute([]);
-    expect(r.status).toBe("need_more_history");
+    expect(r.status).toBe("not_enough_information");
     expect(r.estimate).toBeNull();
+    expect(r.window).toBeNull();
+    expect(r.confidence).toBeNull();
+  });
+
+  it("3 starts (2 intervals) → still not enough information", () => {
+    const r = compute(periods(["2025-01-01", "2025-01-29", "2025-02-26"]));
+    expect(r.status).toBe("not_enough_information");
+    expect(r.estimate).toBeNull();
+  });
+
+  it("no periods → not enough information", () => {
+    const r = compute([]);
+    expect(r.status).toBe("not_enough_information");
+    expect(r.estimate).toBeNull();
+  });
+
+  it("exactly 3 valid intervals → prediction appears", () => {
+    const r = compute(periods(["2025-01-01", "2025-01-29", "2025-02-26", "2025-03-26"]));
+    expect(r.status).toBe("ok");
+    expect(r.estimate).toBe("2025-04-23");
+    expect(r.confidence).toBe("high");
   });
 
   it("regular cycles → high confidence", () => {

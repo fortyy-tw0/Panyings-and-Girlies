@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS health_context(
 CREATE TABLE IF NOT EXISTS period(
     id INTEGER PRIMARY KEY,
     start_date TEXT NOT NULL,
-    end_date TEXT,              -- NULL = period still ongoing
+    end_date TEXT,              -- NULL = ongoing or unknown (see end_state)
+    kind TEXT NOT NULL DEFAULT 'period',      -- 'period' | 'spotting'
+    end_state TEXT NOT NULL DEFAULT 'ended',  -- 'ended' | 'ongoing' | 'unknown'
     flow_level INTEGER,
     created_at TEXT,
     updated_at TEXT
@@ -116,7 +118,35 @@ CREATE TABLE IF NOT EXISTS pregnancy_test_reminder(
     done INTEGER DEFAULT 0,
     created_at TEXT
 );
+
+-- Chats. Only persisted when retention is 7d/30d/manual — 'off' sessions
+-- live in app memory and never touch this table.
+CREATE TABLE IF NOT EXISTS chat_session(
+    id TEXT PRIMARY KEY,
+    mode TEXT DEFAULT 'companion',
+    retention TEXT NOT NULL DEFAULT 'manual'
+        CHECK(retention IN ('7d','30d','manual')),
+    consent_json TEXT NOT NULL DEFAULT '{}',  -- per data type: {records,notes,activity,health_context}
+    expires_at TEXT,                          -- set for 7d/30d retention
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS chat_message(
+    id INTEGER PRIMARY KEY,
+    session_id INTEGER NOT NULL REFERENCES chat_session(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+    text_enc BLOB NOT NULL,       -- AES-GCM(message text)
+    nonce BLOB,
+    sources_json TEXT,            -- source cards attached to an assistant reply
+    created_at TEXT
+);
 `;
+
+// Columns added after the first schema — applied to existing DBs too.
+const MIGRATIONS = [
+  "ALTER TABLE period ADD COLUMN kind TEXT NOT NULL DEFAULT 'period'",
+  "ALTER TABLE period ADD COLUMN end_state TEXT NOT NULL DEFAULT 'ended'",
+];
 
 export const DEFAULT_CATEGORIES: [string, string][] = [
   ["flow", "Flow"],
@@ -132,6 +162,13 @@ export function initDb(db: Db): void {
   db.exec(SCHEMA);
   db.exec("PRAGMA foreign_keys=ON");
   db.exec("PRAGMA secure_delete=ON");
+  const periodCols = new Set(
+    db.all<{ name: string }>("PRAGMA table_info(period)").map((c) => c.name)
+  );
+  for (const m of MIGRATIONS) {
+    const col = /ADD COLUMN (\w+)/.exec(m)![1];
+    if (!periodCols.has(col)) db.exec(m);
+  }
   db.run("INSERT OR IGNORE INTO profile(id, created_at) VALUES (1, ?)", nowIso());
   for (const [key, label] of DEFAULT_CATEGORIES) {
     db.run(
