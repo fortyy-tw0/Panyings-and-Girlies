@@ -21,6 +21,17 @@ def test_onboarding_saves_profile(client):
     assert cats["cramps"] and not cats["flow"]
 
 
+def test_health_context_encrypted(client):
+    client.post("/onboarding", json={
+        "health_context": [{"kind": "condition", "condition_name": "PCOS",
+                            "status": "suspected_not_diagnosed"}],
+    })
+    row = sqlite3.connect(db.db_path()).execute(
+        "SELECT payload_enc FROM health_context"
+    ).fetchone()
+    assert b"PCOS" not in bytes(row[0])
+
+
 def test_onboarding_rejects_bad_status(client):
     r = client.post("/onboarding", json={
         "health_context": [{"status": "confirmed_by_doctor"}],
@@ -98,3 +109,7 @@ def test_contraception_pref(client):
     assert client.get("/contraception").json()["uses_pills"] is None
     r = client.put("/contraception", json={"uses_pills": True, "method": "pills"})
     assert r.json() == {"uses_pills": True, "method": "pills"}
+    row = sqlite3.connect(db.db_path()).execute(
+        "SELECT payload_enc FROM contraception_pref WHERE id=1"
+    ).fetchone()
+    assert b"pills" not in bytes(row[0])

@@ -16,10 +16,19 @@ def test_pill_reminder_flow(client):
     r = setup_pill(client)
     assert r.json()["enabled"] is True and r.json()["time_local"] == "21:30"
 
+    # v2.1: reminder time and event type must not be readable from the DB file
+    import sqlite3
+    from app import db
+    raw = sqlite3.connect(db.db_path())
+    pill_row = raw.execute("SELECT payload_enc FROM pill_reminder WHERE id=1").fetchone()
+    assert b"21:30" not in bytes(pill_row[0])
+
     today_10pm = datetime.now().replace(hour=22, minute=0, second=0)
     due = client.get(f"/reminders/due?at={today_10pm.isoformat()}").json()
     assert len(due) == 1 and due[0]["type"] == "pill"
     assert "birth control" not in due[0]["text"].lower()
+    ev_row = raw.execute("SELECT reminder_type_enc FROM reminder_event").fetchone()
+    assert b"pill" not in bytes(ev_row[0])
 
     r = client.post(f"/reminders/events/{due[0]['event_id']}/respond", json={"status": "taken"})
     assert r.status_code == 200

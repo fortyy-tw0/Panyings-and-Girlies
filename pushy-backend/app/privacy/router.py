@@ -34,6 +34,7 @@ def export(conn=Depends(get_conn)):
 
 class PassphraseIn(BaseModel):
     passphrase: str
+    path: Optional[str] = None  # where the .pushybackup lands; default: data dir
 
 
 class RestoreIn(BaseModel):
@@ -45,7 +46,10 @@ class RestoreIn(BaseModel):
 def backup(body: PassphraseIn, conn=Depends(get_conn)):
     if not body.passphrase:
         err(400, "validation_error", "A passphrase is required to encrypt the backup.")
-    path = service.make_backup(conn, body.passphrase)
+    try:
+        path = service.make_backup(conn, body.passphrase, body.path)
+    except OSError as e:
+        err(400, "invalid_path", "Cannot write backup there: %s" % e)
     return {"path": path, "bytes": os.path.getsize(path)}
 
 

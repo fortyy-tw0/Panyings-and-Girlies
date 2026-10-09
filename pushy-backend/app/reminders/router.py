@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from datetime import time as dt_time
 from typing import Literal, Optional
@@ -50,31 +51,23 @@ def get_pill(conn=Depends(get_conn)):
     r = service.get_pill_reminder(conn)
     if not r:
         return {"enabled": False, "time_local": None, "discreet_text": None, "paused": False}
-    return {
-        "enabled": bool(r["enabled"]),
-        "time_local": r["time_local"],
-        "discreet_text": service.pill_text(conn, r) if r["discreet_text_enc"] else None,
-        "paused": bool(r["paused"]),
-    }
+    return r
 
 
 @router.put("/reminders/pill")
 def put_pill(body: PillReminderIn, conn=Depends(get_conn)):
-    key = crypto.app_key()
-    nonce, ct = (
-        crypto.encrypt_text(key, body.discreet_text) if body.discreet_text else (None, None)
+    nonce, ct = crypto.encrypt_text(
+        crypto.app_key(),
+        json.dumps({"time_local": body.time_local, "discreet_text": body.discreet_text}),
     )
+    now = datetime.now().isoformat(timespec="seconds")
     conn.execute(
-        "INSERT INTO pill_reminder(id, enabled, time_local, discreet_text_enc, nonce,"
-        " paused, created_at, updated_at) VALUES (1,?,?,?,?,?,?,?)"
+        "INSERT INTO pill_reminder(id, enabled, paused, payload_enc, nonce,"
+        " created_at, updated_at) VALUES (1,?,?,?,?,?,?)"
         " ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,"
-        " time_local=excluded.time_local, discreet_text_enc=excluded.discreet_text_enc,"
-        " nonce=excluded.nonce, paused=excluded.paused, updated_at=excluded.updated_at",
-        (
-            int(body.enabled), body.time_local, ct, nonce, int(body.paused),
-            datetime.now().isoformat(timespec="seconds"),
-            datetime.now().isoformat(timespec="seconds"),
-        ),
+        " paused=excluded.paused, payload_enc=excluded.payload_enc,"
+        " nonce=excluded.nonce, updated_at=excluded.updated_at",
+        (int(body.enabled), int(body.paused), ct, nonce, now, now),
     )
     service.clear_pending_pill_events(conn)  # regenerate at the new time
     conn.commit()
@@ -104,12 +97,11 @@ def respond(event_id: int, body: RespondIn, conn=Depends(get_conn)):
 def history(days: int = 30, conn=Depends(get_conn)):
     since = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
     rows = conn.execute(
-        "SELECT id, reminder_type, scheduled_for, status, responded_at"
-        " FROM reminder_event WHERE scheduled_for >= ? ORDER BY scheduled_for DESC",
+        "SELECT * FROM reminder_event WHERE scheduled_for >= ? ORDER BY scheduled_for DESC",
         (since,),
     ).fetchall()
     return [
-        {"id": r["id"], "type": r["reminder_type"], "scheduled_for": r["scheduled_for"],
+        {"id": r["id"], "type": service.event_type(r), "scheduled_for": r["scheduled_for"],
          "status": r["status"], "responded_at": r["responded_at"]}
         for r in rows
     ]
@@ -152,11 +144,8 @@ def create_pt(body: PregnancyTestIn, conn=Depends(get_conn)):
         "INSERT INTO pregnancy_test_reminder(date, note_enc, nonce, created_at) VALUES (?,?,?,?)",
         (body.date, ct, nonce, datetime.now().isoformat(timespec="seconds")),
     )
-    conn.execute(
-        "INSERT INTO reminder_event(reminder_type, ref_id, scheduled_for, status, created_at)"
-        " VALUES (?,?,?,'pending',?)",
-        (service.PREGNANCY_TEST, cur.lastrowid, body.date + "T09:00:00",
-         datetime.now().isoformat(timespec="seconds")),
+    service.insert_event(
+        conn, service.PREGNANCY_TEST, cur.lastrowid, body.date + "T09:00:00"
     )
     conn.commit()
     r = conn.execute(
@@ -168,9 +157,10 @@ def create_pt(body: PregnancyTestIn, conn=Depends(get_conn)):
 @router.delete("/reminders/pregnancy-test/{reminder_id}", status_code=204)
 def delete_pt(reminder_id: int, conn=Depends(get_conn)):
     cur = conn.execute("DELETE FROM pregnancy_test_reminder WHERE id=?", (reminder_id,))
+    # ref_id is only set on pregnancy-test events, so this needs no type check
     conn.execute(
-        "DELETE FROM reminder_event WHERE reminder_type=? AND ref_id=? AND status='pending'",
-        (service.PREGNANCY_TEST, reminder_id),
+        "DELETE FROM reminder_event WHERE ref_id=? AND status='pending'",
+        (reminder_id,),
     )
     conn.commit()
     if cur.rowcount == 0:

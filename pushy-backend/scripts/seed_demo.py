@@ -8,6 +8,7 @@ days 1-2 so symptom patterns have something to show.
 Run:  python scripts/seed_demo.py        (from pushy-backend/, venv active)
 """
 
+import json
 import os
 import sys
 from datetime import date, timedelta
@@ -54,9 +55,14 @@ def main():
                 (day, cats[cat], "2" if cat == "cramps" else "1"),
             )
 
+    nonce, ct = crypto.encrypt_text(key, json.dumps({
+        "kind": "cycle", "condition_name": "irregular cycles",
+        "status": "suspected_not_diagnosed",
+    }))
     conn.execute(
-        "INSERT INTO health_context(kind, condition_name, status, created_at)"
-        " VALUES ('cycle','irregular cycles','suspected_not_diagnosed',datetime('now'))"
+        "INSERT INTO health_context(payload_enc, nonce, created_at)"
+        " VALUES (?,?,datetime('now'))",
+        (ct, nonce),
     )
     conn.execute(
         "UPDATE profile SET language='en', cycle_type='irregular' WHERE id=1"

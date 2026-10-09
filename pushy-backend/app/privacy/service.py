@@ -55,16 +55,27 @@ def export_data(conn):
 
     pill = conn.execute("SELECT * FROM pill_reminder WHERE id=1").fetchone()
     pill_json = None
-    if pill:
-        pill_json = {"enabled": bool(pill["enabled"]), "time_local": pill["time_local"],
-                     "discreet_text": dec(pill["nonce"], pill["discreet_text_enc"]),
-                     "paused": bool(pill["paused"])}
+    if pill and pill["payload_enc"]:
+        payload = json.loads(dec(pill["nonce"], pill["payload_enc"]))
+        pill_json = {"enabled": bool(pill["enabled"]), "paused": bool(pill["paused"]),
+                     "time_local": payload.get("time_local"),
+                     "discreet_text": payload.get("discreet_text")}
+
+    cp = conn.execute("SELECT * FROM contraception_pref WHERE id=1").fetchone()
+    cp_json = json.loads(dec(cp["nonce"], cp["payload_enc"]) or "{}") if cp else {}
+
+    events = []
+    for e in all_("reminder_event"):
+        e["reminder_type"] = dec(e.pop("nonce"), e.pop("reminder_type_enc"))
+        events.append(e)
 
     return {
         "version": FORMAT_VERSION,
         "exported_at": datetime.now().isoformat(timespec="seconds"),
         "profile": profile,
-        "health_context": all_("health_context"),
+        "health_context": [
+            json.loads(dec(r["nonce"], r["payload_enc"])) for r in all_("health_context")
+        ],
         "periods": all_("period"),
         "symptom_categories": all_("symptom_category"),
         "daily_logs": [
@@ -79,10 +90,9 @@ def export_data(conn):
         "sexual_activity": [
             json.loads(dec(r["nonce"], r["payload_enc"])) for r in all_("sexual_activity")
         ],
-        "contraception_pref": dict(conn.execute(
-            "SELECT uses_pills, method FROM contraception_pref WHERE id=1").fetchone() or {}),
+        "contraception_pref": cp_json,
         "pill_reminder": pill_json,
-        "reminder_events": all_("reminder_event"),
+        "reminder_events": events,
         "pregnancy_test_reminders": [
             {"date": r["date"], "note": dec(r["nonce"], r["note_enc"]), "done": bool(r["done"])}
             for r in all_("pregnancy_test_reminder")
@@ -120,10 +130,17 @@ def import_data(conn, data):
          json.dumps(p.get("enabled_categories", []))),
     )
     for hc in data.get("health_context", []):
+        status = hc.get("status", "prefer_not_to_say")
+        if status not in ("diagnosed_user_reported", "suspected_not_diagnosed",
+                          "prefer_not_to_say"):
+            status = "prefer_not_to_say"
+        nonce, ct = crypto.encrypt_text(key, json.dumps({
+            "kind": hc.get("kind"), "condition_name": hc.get("condition_name"),
+            "status": status,
+        }))
         conn.execute(
-            "INSERT INTO health_context(kind, condition_name, status, created_at) VALUES (?,?,?,?)",
-            (hc.get("kind"), hc.get("condition_name"),
-             hc.get("status", "prefer_not_to_say"), hc.get("created_at")),
+            "INSERT INTO health_context(payload_enc, nonce, created_at) VALUES (?,?,?)",
+            (ct, nonce, hc.get("created_at")),
         )
     for r in data.get("periods", []):
         conn.execute(
@@ -167,28 +184,32 @@ def import_data(conn, data):
         )
     cp = data.get("contraception_pref") or {}
     if cp:
+        nonce, ct = crypto.encrypt_text(key, json.dumps({
+            "uses_pills": cp.get("uses_pills"), "method": cp.get("method"),
+        }))
         conn.execute(
-            "UPDATE contraception_pref SET uses_pills=?, method=?, updated_at=? WHERE id=1",
-            (cp.get("uses_pills"), cp.get("method"), datetime.now().isoformat(timespec="seconds")),
+            "UPDATE contraception_pref SET payload_enc=?, nonce=?, updated_at=? WHERE id=1",
+            (ct, nonce, datetime.now().isoformat(timespec="seconds")),
         )
     pill = data.get("pill_reminder")
     if pill:
-        nonce, ct = (
-            crypto.encrypt_text(key, pill["discreet_text"])
-            if pill.get("discreet_text") else (None, None)
-        )
+        nonce, ct = crypto.encrypt_text(key, json.dumps({
+            "time_local": pill.get("time_local"),
+            "discreet_text": pill.get("discreet_text"),
+        }))
         conn.execute(
-            "INSERT OR REPLACE INTO pill_reminder(id, enabled, time_local, discreet_text_enc,"
-            " nonce, paused, created_at, updated_at) VALUES (1,?,?,?,?,?,?,?)",
-            (int(pill["enabled"]), pill["time_local"], ct, nonce, int(pill.get("paused", 0)),
+            "INSERT OR REPLACE INTO pill_reminder(id, enabled, paused, payload_enc,"
+            " nonce, created_at, updated_at) VALUES (1,?,?,?,?,?,?)",
+            (int(pill["enabled"]), int(pill.get("paused", 0)), ct, nonce,
              datetime.now().isoformat(timespec="seconds"),
              datetime.now().isoformat(timespec="seconds")),
         )
     for e in data.get("reminder_events", []):
+        nonce, ct = crypto.encrypt_text(key, e["reminder_type"])
         conn.execute(
-            "INSERT INTO reminder_event(reminder_type, ref_id, scheduled_for, status,"
-            " responded_at, created_at) VALUES (?,?,?,?,?,?)",
-            (e["reminder_type"], e.get("ref_id"), e["scheduled_for"], e["status"],
+            "INSERT INTO reminder_event(reminder_type_enc, nonce, ref_id, scheduled_for,"
+            " status, responded_at, created_at) VALUES (?,?,?,?,?,?,?)",
+            (ct, nonce, e.get("ref_id"), e["scheduled_for"], e["status"],
              e.get("responded_at"), e.get("created_at")),
         )
     for r in data.get("pregnancy_test_reminders", []):
@@ -204,7 +225,7 @@ def import_data(conn, data):
 
 # ---------- backup file ----------
 
-def make_backup(conn, passphrase):
+def make_backup(conn, passphrase, path=None):
     payload = json.dumps(export_data(conn)).encode("utf-8")
     salt = os.urandom(16)
     key = crypto.derive_key(passphrase, salt)
@@ -214,9 +235,10 @@ def make_backup(conn, passphrase):
         "n": crypto.SCRYPT_N, "r": crypto.SCRYPT_R, "p": crypto.SCRYPT_P,
         "salt": salt.hex(), "nonce": nonce.hex(),
     }
-    path = os.path.join(
-        db.data_dir(), "backup-%s.pushybackup" % datetime.now().strftime("%Y%m%d-%H%M%S")
-    )
+    if not path:
+        path = os.path.join(
+            db.data_dir(), "backup-%s.pushybackup" % datetime.now().strftime("%Y%m%d-%H%M%S")
+        )
     with open(path, "wb") as f:
         f.write(json.dumps(header).encode("utf-8") + b"\n" + ct)
     return path

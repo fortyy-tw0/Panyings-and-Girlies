@@ -68,11 +68,20 @@ def onboarding(body: OnboardingIn, conn=Depends(get_conn)):
         (body.language, body.cycle_type, json.dumps(body.enabled_categories)),
     )
     conn.execute("DELETE FROM health_context")
+    key = crypto.app_key()
     for hc in body.health_context:
+        # status enum is enforced here in code: a CHECK constraint cannot
+        # see inside the encrypted payload, and nothing may ever promote
+        # suspected_not_diagnosed to diagnosed automatically
+        if hc.status not in CONDITION_STATUSES:
+            err(400, "validation_error", "Invalid health context status.")
+        nonce, ct = crypto.encrypt_text(
+            key, json.dumps({"kind": hc.kind, "condition_name": hc.condition_name,
+                             "status": hc.status})
+        )
         conn.execute(
-            "INSERT INTO health_context(kind, condition_name, status, created_at)"
-            " VALUES (?,?,?,?)",
-            (hc.kind, hc.condition_name, hc.status, now()),
+            "INSERT INTO health_context(payload_enc, nonce, created_at) VALUES (?,?,?)",
+            (ct, nonce, now()),
         )
     if body.enabled_categories:
         conn.execute("UPDATE symptom_category SET enabled=0")
@@ -362,19 +371,25 @@ class ContraceptionIn(BaseModel):
 @router.get("/contraception")
 def get_contraception(conn=Depends(get_conn)):
     row = conn.execute("SELECT * FROM contraception_pref WHERE id=1").fetchone()
-    return {
-        "uses_pills": bool(row["uses_pills"]) if row and row["uses_pills"] is not None else None,
-        "method": row["method"] if row else None,
-    }
+    if not row or not row["payload_enc"]:
+        return {"uses_pills": None, "method": None}
+    payload = json.loads(
+        crypto.decrypt_text(crypto.app_key(), row["nonce"], row["payload_enc"])
+    )
+    return {"uses_pills": payload.get("uses_pills"), "method": payload.get("method")}
 
 
 @router.put("/contraception")
 def put_contraception(body: ContraceptionIn, conn=Depends(get_conn)):
+    nonce, ct = crypto.encrypt_text(
+        crypto.app_key(),
+        json.dumps({"uses_pills": body.uses_pills, "method": body.method}),
+    )
     conn.execute(
-        "INSERT INTO contraception_pref(id, uses_pills, method, updated_at) VALUES (1,?,?,?)"
-        " ON CONFLICT(id) DO UPDATE SET uses_pills=excluded.uses_pills,"
-        " method=excluded.method, updated_at=excluded.updated_at",
-        (int(body.uses_pills), body.method, now()),
+        "INSERT INTO contraception_pref(id, payload_enc, nonce, updated_at) VALUES (1,?,?,?)"
+        " ON CONFLICT(id) DO UPDATE SET payload_enc=excluded.payload_enc,"
+        " nonce=excluded.nonce, updated_at=excluded.updated_at",
+        (ct, nonce, now()),
     )
     conn.commit()
     return get_contraception(conn)

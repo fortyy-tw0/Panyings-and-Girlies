@@ -19,13 +19,10 @@ CREATE TABLE IF NOT EXISTS profile(
 
 CREATE TABLE IF NOT EXISTS health_context(
     id INTEGER PRIMARY KEY,
-    kind TEXT,
-    condition_name TEXT,
-    status TEXT NOT NULL CHECK(status IN (
-        'diagnosed_user_reported',
-        'suspected_not_diagnosed',
-        'prefer_not_to_say'
-    )),
+    payload_enc BLOB,           -- AES-GCM({kind, condition_name, status});
+                                -- status enum enforced in code before encryption
+                                -- (a CHECK constraint can't see inside ciphertext)
+    nonce BLOB,
     created_at TEXT
 );
 
@@ -73,25 +70,25 @@ CREATE TABLE IF NOT EXISTS sexual_activity(
 
 CREATE TABLE IF NOT EXISTS contraception_pref(
     id INTEGER PRIMARY KEY CHECK(id = 1),
-    uses_pills INTEGER,
-    method TEXT,
+    payload_enc BLOB,           -- AES-GCM({uses_pills, method})
+    nonce BLOB,
     updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pill_reminder(
     id INTEGER PRIMARY KEY CHECK(id = 1),
     enabled INTEGER DEFAULT 0,
-    time_local TEXT,            -- "HH:MM"
-    discreet_text_enc BLOB,
-    nonce BLOB,
     paused INTEGER DEFAULT 0,
+    payload_enc BLOB,           -- AES-GCM({time_local: "HH:MM", discreet_text})
+    nonce BLOB,
     created_at TEXT,
     updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS reminder_event(
     id INTEGER PRIMARY KEY,
-    reminder_type TEXT NOT NULL,  -- 'pill' | 'pregnancy_test'
+    reminder_type_enc BLOB,     -- AES-GCM('pill' | 'pregnancy_test')
+    nonce BLOB,
     ref_id INTEGER,               -- pregnancy_test_reminder.id when applicable
     scheduled_for TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('pending', 'taken', 'skipped', 'missed')),

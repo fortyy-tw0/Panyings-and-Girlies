@@ -4,6 +4,10 @@ It never suggests a schedule, never answers "what do I do after a missed
 pill" — that is a fixed Companion reply pointing to the product leaflet /
 pharmacist / doctor. The OS popup belongs to the frontend; this service only
 reports what is due.
+
+v2.1: pill time + discreet text live in an encrypted payload; each
+reminder_event's type is AES-GCM encrypted too, so type-based filtering
+decrypts pending rows in Python (event counts are tiny at MVP scale).
 """
 
 import json
@@ -18,15 +22,43 @@ DEFAULT_PILL_TEXT = "Time for your reminder."
 DEFAULT_PT_TEXT = "Pregnancy test reminder."
 
 
+def _enc(text):
+    nonce, ct = crypto.encrypt_text(crypto.app_key(), text)
+    return ct, nonce
+
+
+def _dec(nonce, blob):
+    return crypto.decrypt_text(crypto.app_key(), nonce, blob) if blob else None
+
+
+def event_type(row):
+    return _dec(row["nonce"], row["reminder_type_enc"])
+
+
 def get_pill_reminder(conn):
-    return conn.execute("SELECT * FROM pill_reminder WHERE id=1").fetchone()
+    r = conn.execute("SELECT * FROM pill_reminder WHERE id=1").fetchone()
+    if not r:
+        return None
+    payload = json.loads(_dec(r["nonce"], r["payload_enc"]) or "{}")
+    return {
+        "enabled": bool(r["enabled"]),
+        "paused": bool(r["paused"]),
+        "time_local": payload.get("time_local"),
+        "discreet_text": payload.get("discreet_text"),
+    }
 
 
-def pill_text(conn, row):
-    key = crypto.app_key()
-    if row and row["discreet_text_enc"]:
-        return crypto.decrypt_text(key, row["nonce"], row["discreet_text_enc"])
+def pill_text(reminder):
+    if reminder and reminder.get("discreet_text"):
+        return reminder["discreet_text"]
     return DEFAULT_PILL_TEXT
+
+
+def _pending_events(conn, where="", params=()):
+    rows = conn.execute(
+        "SELECT * FROM reminder_event WHERE status='pending' " + where, params
+    ).fetchall()
+    return [(r, event_type(r)) for r in rows]
 
 
 def ensure_pill_event(conn, now):
@@ -37,15 +69,13 @@ def ensure_pill_event(conn, now):
         return
     scheduled = datetime.combine(now.date(), time.fromisoformat(r["time_local"]))
     day_start = scheduled.replace(hour=0, minute=0).isoformat()
-    exists = conn.execute(
-        "SELECT 1 FROM reminder_event WHERE reminder_type=? AND scheduled_for >= ?",
-        (PILL, day_start),
-    ).fetchone()
-    if not exists:
+    existing = _pending_events(conn, "AND scheduled_for >= ?", (day_start,))
+    if not any(t == PILL for _, t in existing):
+        ct, nonce = _enc(PILL)
         conn.execute(
-            "INSERT INTO reminder_event(reminder_type, scheduled_for, status, created_at)"
-            " VALUES (?,?, 'pending', ?)",
-            (PILL, scheduled.isoformat(), now.isoformat(timespec="seconds")),
+            "INSERT INTO reminder_event(reminder_type_enc, nonce, scheduled_for,"
+            " status, created_at) VALUES (?,?,?, 'pending', ?)",
+            (ct, nonce, scheduled.isoformat(), now.isoformat(timespec="seconds")),
         )
         conn.commit()
 
@@ -53,11 +83,10 @@ def ensure_pill_event(conn, now):
 def sweep_missed(conn, now):
     # Only pill events auto-miss: a daily dose is time-sensitive; a one-off
     # pregnancy-test reminder should keep surfacing until the user responds.
-    conn.execute(
-        "UPDATE reminder_event SET status='missed'"
-        " WHERE status='pending' AND reminder_type=? AND scheduled_for < ?",
-        (PILL, (now - GRACE).isoformat(timespec="seconds")),
-    )
+    cutoff = (now - GRACE).isoformat(timespec="seconds")
+    for r, t in _pending_events(conn, "AND scheduled_for < ?", (cutoff,)):
+        if t == PILL:
+            conn.execute("UPDATE reminder_event SET status='missed' WHERE id=?", (r["id"],))
     conn.commit()
 
 
@@ -66,18 +95,11 @@ def due_events(conn, now):
     still within the grace window)."""
     ensure_pill_event(conn, now)
     sweep_missed(conn, now)
-    rows = conn.execute(
-        "SELECT * FROM reminder_event WHERE status='pending' AND scheduled_for <= ?"
-        " ORDER BY scheduled_for",
-        (now.isoformat(timespec="seconds"),),
-    ).fetchall()
     out = []
-    for r in rows:
-        if r["reminder_type"] == PILL:
-            text = pill_text(conn, get_pill_reminder(conn))
-        else:
-            text = DEFAULT_PT_TEXT
-        out.append({"event_id": r["id"], "type": r["reminder_type"], "text": text,
+    for r, t in _pending_events(conn, "AND scheduled_for <= ? ORDER BY scheduled_for",
+                              (now.isoformat(timespec="seconds"),)):
+        text = pill_text(get_pill_reminder(conn)) if t == PILL else DEFAULT_PT_TEXT
+        out.append({"event_id": r["id"], "type": t, "text": text,
                     "scheduled_for": r["scheduled_for"]})
     return out
 
@@ -90,7 +112,7 @@ def respond(conn, event_id, status):
         "UPDATE reminder_event SET status=?, responded_at=? WHERE id=?",
         (status, datetime.now().isoformat(timespec="seconds"), event_id),
     )
-    if r["reminder_type"] == PREGNANCY_TEST and r["ref_id"]:
+    if event_type(r) == PREGNANCY_TEST and r["ref_id"]:
         conn.execute(
             "UPDATE pregnancy_test_reminder SET done=1 WHERE id=?", (r["ref_id"],)
         )
@@ -99,7 +121,16 @@ def respond(conn, event_id, status):
 
 
 def clear_pending_pill_events(conn):
-    conn.execute(
-        "DELETE FROM reminder_event WHERE reminder_type=? AND status='pending'", (PILL,)
-    )
+    for r, t in _pending_events(conn):
+        if t == PILL:
+            conn.execute("DELETE FROM reminder_event WHERE id=?", (r["id"],))
     conn.commit()
+
+
+def insert_event(conn, reminder_type, ref_id, scheduled_for):
+    ct, nonce = _enc(reminder_type)
+    conn.execute(
+        "INSERT INTO reminder_event(reminder_type_enc, nonce, ref_id, scheduled_for,"
+        " status, created_at) VALUES (?,?,?,?, 'pending', ?)",
+        (ct, nonce, ref_id, scheduled_for, datetime.now().isoformat(timespec="seconds")),
+    )
