@@ -15,7 +15,8 @@ import { DEFAULT_CATEGORIES, nowIso } from "./db";
 import { apiError } from "./errors";
 import * as crypto from "./crypto";
 
-const MAGIC = "PUSHYBACKUP";
+const MAGIC = "SIKLOBACKUP";
+const LEGACY_MAGIC = "PUSHYBACKUP"; // backups written by the Python reference impl
 const FORMAT_VERSION = 1;
 
 // ---------- export / import ----------
@@ -105,7 +106,7 @@ export function wipeUserData(db: Db): void {
 
 export function importData(db: Db, dataDir: string, data: Record<string, unknown>): void {
   if (!data || !Array.isArray(data.periods)) {
-    apiError(400, "invalid_backup", "not a Pu-shy export");
+    apiError(400, "invalid_backup", "not a SikLo export");
   }
   const key = crypto.appKey(dataDir);
   wipeUserData(db);
@@ -207,7 +208,7 @@ export function makeBackup(db: Db, dataDir: string, passphrase: string, destPath
   };
   const out =
     destPath ??
-    path.join(dataDir, `backup-${new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19)}.pushybackup`);
+    path.join(dataDir, `backup-${new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19)}.siklobackup`);
   fs.writeFileSync(out, Buffer.concat([Buffer.from(JSON.stringify(header) + "\n"), ct]));
   return out;
 }
@@ -216,7 +217,9 @@ export function readBackup(backupPath: string, passphrase: string): Record<strin
   const raw = fs.readFileSync(backupPath);
   const nl = raw.indexOf(0x0a);
   const header = JSON.parse(raw.subarray(0, nl).toString("utf8"));
-  if (header.magic !== MAGIC) apiError(400, "invalid_backup", "not a .pushybackup file");
+  if (header.magic !== MAGIC && header.magic !== LEGACY_MAGIC) {
+    apiError(400, "invalid_backup", "not a .siklobackup file");
+  }
   if (header.version !== FORMAT_VERSION) {
     apiError(400, "invalid_backup", `unsupported backup version ${header.version}`);
   }
@@ -230,7 +233,7 @@ export function readBackup(backupPath: string, passphrase: string): Record<strin
 export function storageReport(paths: { db?: string; libraryDb?: string; key?: string; model?: string }) {
   const size = (p?: string) => (p && fs.existsSync(p) ? fs.statSync(p).size : 0);
   const parts = {
-    pushy_db_bytes: size(paths.db),
+    siklo_db_bytes: size(paths.db),
     library_db_bytes: size(paths.libraryDb),
     key_bytes: size(paths.key),
     model_bytes: size(paths.model),

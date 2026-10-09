@@ -1,5 +1,5 @@
 /**
- * Reminder Service — port of pushy-backend/app/reminders. Stores
+ * Reminder Service — port of siklo-backend/app/reminders. Stores
  * user-entered schedules + completion history; never suggests a schedule.
  * On the phone the OS notification is scheduled by the app layer — this
  * service only reports what is due.

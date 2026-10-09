@@ -20,7 +20,7 @@ TOKEN_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Pu-shy Backend", version="0.2.0")
+    app = FastAPI(title="SikLo Backend", version="0.2.0")
 
     configure_middleware(app)
     configure_exception_handlers(app)
@@ -104,7 +104,7 @@ def configure_lifecycle(app: FastAPI) -> None:
         app.state.api_token = os.environ.get("PUSHY_API_TOKEN") or secrets.token_urlsafe(
             32
         )
-        print("Pu-shy API token (hand to the frontend):", app.state.api_token)
+        print("SikLo API token (hand to the frontend):", app.state.api_token)
         conn = db.connect()
         try:
             privacy_service.load_lock_state(conn)

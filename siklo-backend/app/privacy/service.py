@@ -119,7 +119,7 @@ def wipe_user_data(conn):
 
 def import_data(conn, data):
     if not isinstance(data, dict) or "periods" not in data:
-        raise ValueError("not a Pu-shy export")
+        raise ValueError("not a SikLo export")
     key = crypto.app_key()
     wipe_user_data(conn)
 

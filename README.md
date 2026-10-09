@@ -37,7 +37,7 @@ The user should decide which categories appear. They should not be forced to ans
 
 2. Cycle predictions
 
-Pu-shy can provide the familiar prediction categories found in period-tracking apps:
+SikLo can provide the familiar prediction categories found in period-tracking apps:
 - Estimated next period
 - Expected period window
 - Expected period duration

@@ -1,5 +1,5 @@
 /**
- * Records Service — port of pushy-backend/app/records. Same inputs/outputs
+ * Records Service — port of siklo-backend/app/records. Same inputs/outputs
  * as the HTTP contract; errors come back as ApiError(status, code, msg).
  */
 

@@ -1,11 +1,11 @@
 /**
  * Public entry point — what the React Native app imports.
  *
- * Phone:      createApi(opSqliteDb(open({ name: "pushy.db", encryptionKey })), { dataDir, paths })
+ * Phone:      createApi(opSqliteDb(open({ name: "siklo.db", encryptionKey })), { dataDir, paths })
  * Laptop/test: createApi(openDb(":memory:"), { dataDir })
  */
 
-export { createApi, type PushyApi, type ApiOptions } from "./api";
+export { createApi, type SikloApi, type ApiOptions } from "./api";
 export { openDb } from "./db.node";
 export { opSqliteDb } from "./db.opsqlite";
 export { initDb, SCHEMA, type Db } from "./db";

@@ -3,13 +3,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createApi, type PushyApi } from "../src/api";
+import { createApi, type SikloApi } from "../src/api";
 import { openDb } from "../src/db.node";
 
-let api: PushyApi;
+let api: SikloApi;
 
 beforeEach(() => {
-  api = createApi(openDb(":memory:"), { dataDir: fs.mkdtempSync(path.join(os.tmpdir(), "pushy-")) });
+  api = createApi(openDb(":memory:"), { dataDir: fs.mkdtempSync(path.join(os.tmpdir(), "siklo-")) });
 });
 
 function at(hour: number, dayOffset = 0) {

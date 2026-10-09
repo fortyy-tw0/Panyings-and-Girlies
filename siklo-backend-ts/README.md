@@ -1,6 +1,6 @@
-# pushy-core
+# siklo-core
 
-Pu-shy's backend logic in TypeScript — the **Option C** port. No HTTP, no server: the phone app calls these functions directly. Same logic, same JSON shapes, and same crypto byte-format as `pushy-backend` (the Python/FastAPI reference implementation), so encrypted backups made by one can be restored by the other.
+SikLo's backend logic in TypeScript — the **Option C** port. No HTTP, no server: the phone app calls these functions directly. Same logic, same JSON shapes, and same crypto byte-format as `siklo-backend` (the Python/FastAPI reference implementation), so encrypted backups made by one can be restored by the other.
 
 ## What's here
 
@@ -22,11 +22,11 @@ src/
 ## Usage (React Native)
 
 ```ts
-import { createApi, opSqliteDb } from "pushy-core";
+import { createApi, opSqliteDb } from "siklo-core";
 import { open } from "op-sqlite";
 
-const api = createApi(opSqliteDb(open({ name: "pushy.db", encryptionKey })), {
-  dataDir: FileSystem.documentDirectory + "pushy/",
+const api = createApi(opSqliteDb(open({ name: "siklo.db", encryptionKey })), {
+  dataDir: FileSystem.documentDirectory + "siklo/",
   paths: { db: "...", key: "...", model: "..." },
 });
 
@@ -39,7 +39,7 @@ Every function that reads personal data throws `ApiError` with `{status, code, m
 ## Running locally
 
 ```powershell
-cd pushy-core
+cd siklo-core
 npm install
 npm run typecheck   # tsc --noEmit
 npm test            # vitest — 25 tests, in-memory DB

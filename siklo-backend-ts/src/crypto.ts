@@ -1,7 +1,7 @@
 /**
  * Field-level encryption — same algorithms and byte layout as the Python
  * backend (AES-256-GCM, scrypt N=2^15 r=8 p=1, ciphertext || 16-byte tag),
- * so a .pushybackup made by one implementation restores in the other.
+ * so a .siklobackup made by one implementation restores in the other.
  *
  * This file uses node:crypto. On React Native, swap the internals for
  * @noble/ciphers (aes-gcm) + scrypt-js + react-native-get-random-values —
@@ -77,9 +77,9 @@ export function decryptOrRaise(key: Buffer, nonce: Buffer, ct: Buffer): Buffer {
   }
 }
 
-/** Master field-encryption key stored in <dataDir>/pushy.key (baseline). */
+/** Master field-encryption key stored in <dataDir>/siklo.key (baseline). */
 export function appKey(dataDir: string): Buffer {
-  const keyPath = path.join(dataDir, "pushy.key");
+  const keyPath = path.join(dataDir, "siklo.key");
   if (fs.existsSync(keyPath)) return fs.readFileSync(keyPath);
   fs.mkdirSync(dataDir, { recursive: true });
   const key = randomBytes(32);

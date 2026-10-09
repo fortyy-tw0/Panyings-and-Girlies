@@ -5,7 +5,7 @@
  * package installed. In the RN app:
  *
  *   import { open } from 'op-sqlite';
- *   const raw = open({ name: 'pushy.db', encryptionKey });
+ *   const raw = open({ name: 'siklo.db', encryptionKey });
  *   const db = opSqliteDb(raw);
  *
  * For whole-DB encryption use op-sqlite's SQLCipher build instead of the

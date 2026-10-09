@@ -3,14 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createApi, type PushyApi } from "../src/api";
+import { createApi, type SikloApi } from "../src/api";
 import { openDb } from "../src/db.node";
 
-let api: PushyApi;
+let api: SikloApi;
 let dataDir: string;
 
 beforeEach(() => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "pushy-"));
+  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "siklo-"));
   api = createApi(openDb(":memory:"), { dataDir });
 });
 
@@ -29,7 +29,7 @@ describe("privacy", () => {
     api.createPeriod({ start_date: "2026-09-01", end_date: "2026-09-05" });
     api.createNote({ date: "2026-09-02", text: "secret note" });
 
-    const { path: backupPath } = api.backup("hunter2", path.join(dataDir, "b.pushybackup"));
+    const { path: backupPath } = api.backup("hunter2", path.join(dataDir, "b.siklobackup"));
     expect(fs.existsSync(backupPath)).toBe(true);
     expect(fs.readFileSync(backupPath)).not.toContain("secret note");
 
@@ -42,7 +42,7 @@ describe("privacy", () => {
   });
 
   it("wrong passphrase rejected cleanly", () => {
-    const { path: backupPath } = api.backup("right", path.join(dataDir, "b.pushybackup"));
+    const { path: backupPath } = api.backup("right", path.join(dataDir, "b.siklobackup"));
     expect(() => api.restore("wrong", backupPath)).toThrowError(
       expect.objectContaining({ status: 400 })
     );

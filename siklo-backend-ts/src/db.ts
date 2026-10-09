@@ -1,5 +1,5 @@
 /**
- * Database layer. Same schema as pushy-backend (Python).
+ * Database layer. Same schema as siklo-backend (Python).
  *
  * The `Db` interface is the seam: on the phone it is backed by op-sqlite
  * (see db.opsqlite.ts), in tests by node:sqlite (see db.node.ts). All

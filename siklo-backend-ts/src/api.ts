@@ -1,5 +1,5 @@
 /**
- * Pu-shy API facade — one function per endpoint in api-contract.md.
+ * SikLo API facade — one function per endpoint in api-contract.md.
  * This is what the FastAPI layer exposed over HTTP; on the phone the app
  * calls these directly. Locked state is process-memory only, like the
  * Python middleware.
@@ -123,4 +123,4 @@ export function createApi(db: Db, opts: ApiOptions) {
   };
 }
 
-export type PushyApi = ReturnType<typeof createApi>;
+export type SikloApi = ReturnType<typeof createApi>;

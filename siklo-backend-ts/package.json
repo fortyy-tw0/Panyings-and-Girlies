@@ -1,9 +1,9 @@
 {
-  "name": "pushy-core",
+  "name": "siklo-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pu-shy backend modules in TypeScript — Option C on-device port. Same logic and JSON shapes as pushy-backend (Python/FastAPI), minus the HTTP layer.",
+  "description": "SikLo backend modules in TypeScript — Option C on-device port. Same logic and JSON shapes as siklo-backend (Python/FastAPI), minus the HTTP layer.",
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

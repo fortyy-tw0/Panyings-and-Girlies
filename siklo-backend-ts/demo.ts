@@ -1,6 +1,6 @@
 /**
  * Interactive demo — run with:  npx vite-node demo.ts
- * A keyboard menu that calls the real pushy-backend-ts api. Data persists
+ * A keyboard menu that calls the real siklo-backend-ts api. Data persists
  * in demo.db in this folder; delete that file to start fresh.
  */
 
@@ -87,8 +87,8 @@ async function main() {
         show(api.export());
       } else if (choice === "11") {
         const pass = await ask("Backup passphrase: ");
-        const p = await ask("Save as (blank = backup.pushybackup): ");
-        show(api.backup(pass, p || "backup.pushybackup"));
+        const p = await ask("Save as (blank = backup.siklobackup): ");
+        show(api.backup(pass, p || "backup.siklobackup"));
       } else if (choice === "0") {
         break;
       }
