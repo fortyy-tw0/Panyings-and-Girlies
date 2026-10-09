@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { createApi, type PushyApi } from "../src/api";
 import { openDb } from "../src/db.node";
-import { ApiError } from "../src/errors";
 
 let api: PushyApi;
 let dataDir: string;
@@ -54,15 +53,5 @@ describe("privacy", () => {
     api.deleteAll();
     expect(api.listPeriods()).toEqual([]);
     expect(api.listCategories().some((c) => c.key === "cramps")).toBe(true);
-  });
-
-  it("lock gates the api until unlocked", () => {
-    api.lock("pin");
-    expect(() => api.listPeriods()).toThrowError(
-      expect.objectContaining({ status: 423, code: "locked" })
-    );
-    expect(() => api.unlock("nope")).toThrowError(ApiError);
-    expect(api.unlock("pin")).toEqual({ unlocked: true });
-    expect(api.listPeriods()).toEqual([]);
   });
 });

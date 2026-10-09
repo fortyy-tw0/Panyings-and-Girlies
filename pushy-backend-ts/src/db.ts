@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS profile(
     language TEXT DEFAULT 'en',
     cycle_type TEXT,
     enabled_categories_json TEXT DEFAULT '[]',
-    app_lock_hash TEXT,
+
     discreet_notifications INTEGER DEFAULT 1,
     created_at TEXT
 );

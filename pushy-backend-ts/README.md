@@ -16,7 +16,7 @@ src/
 ├── prediction.ts   Deterministic cycle math — estimate, window, confidence, flags
 ├── records.ts      Onboarding, periods, daily logs, notes, activity, contraception
 ├── reminders.ts    Pill reminders, due events, taken/skipped/missed, pregnancy-test reminders
-└── privacy.ts      Export, encrypted backup/restore, wipe, app lock
+└── privacy.ts      Export, encrypted backup/restore, wipe
 ```
 
 ## Usage (React Native)
@@ -34,7 +34,7 @@ api.createPeriod({ start_date: "2026-10-01", flow_level: 2 });
 const { estimate, window, confidence } = api.getNextPrediction();
 ```
 
-Every function that reads personal data throws `ApiError` with `{status, code, message}` — same codes as the HTTP version (`overlap`, `locked`, `category_disabled`, `invalid_backup`, …). Catch once at the UI layer.
+Every function that reads personal data throws `ApiError` with `{status, code, message}` — same codes as the HTTP version (`overlap`, `category_disabled`, `invalid_backup`, …). Catch once at the UI layer.
 
 ## Running locally
 

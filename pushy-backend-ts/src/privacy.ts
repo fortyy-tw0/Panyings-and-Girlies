@@ -1,5 +1,5 @@
 /**
- * Privacy & Storage — export, encrypted backup/restore, wipe, app lock.
+ * Privacy & Storage — export, encrypted backup/restore, wipe.
  * Backup format identical to the Python backend: JSON header line + AES-GCM
  * ciphertext, so backups are interchangeable across implementations.
  *
@@ -32,7 +32,6 @@ export function exportData(db: Db, dataDir: string) {
   );
 
   const profile = { ...db.get("SELECT * FROM profile WHERE id=1")! } as Record<string, unknown>;
-  delete profile.app_lock_hash;
   profile.enabled_categories = JSON.parse(String(profile.enabled_categories_json ?? "[]"));
   delete profile.enabled_categories_json;
 
@@ -226,7 +225,7 @@ export function readBackup(backupPath: string, passphrase: string): Record<strin
   return JSON.parse(plain.toString("utf8"));
 }
 
-// ---------- storage report / lock ----------
+// ---------- storage report ----------
 
 export function storageReport(paths: { db?: string; libraryDb?: string; key?: string; model?: string }) {
   const size = (p?: string) => (p && fs.existsSync(p) ? fs.statSync(p).size : 0);
@@ -237,20 +236,4 @@ export function storageReport(paths: { db?: string; libraryDb?: string; key?: st
     model_bytes: size(paths.model),
   };
   return { ...parts, total_bytes: Object.values(parts).reduce((a, b) => a + b, 0) };
-}
-
-export function lock(db: Db, passphrase: string): { locked: true } {
-  if (!passphrase) apiError(400, "validation_error", "A passphrase is required.");
-  db.run("UPDATE profile SET app_lock_hash=? WHERE id=1", crypto.hashPassphrase(passphrase));
-  return { locked: true };
-}
-
-/** Returns true if unlocked (or no lock set); throws on wrong passphrase. */
-export function unlock(db: Db, passphrase: string): { unlocked: true } {
-  const row = db.get("SELECT app_lock_hash FROM profile WHERE id=1");
-  if (!row || !row.app_lock_hash) return { unlocked: true };
-  if (!crypto.verifyPassphrase(passphrase, String(row.app_lock_hash))) {
-    apiError(400, "bad_passphrase", "Wrong passphrase.");
-  }
-  return { unlocked: true };
 }

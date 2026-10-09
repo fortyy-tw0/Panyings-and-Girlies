@@ -22,52 +22,45 @@ export interface ApiOptions {
 
 export function createApi(db: Db, opts: ApiOptions) {
   initDb(db);
-  let locked = false;
-  const lockRow = db.get("SELECT app_lock_hash FROM profile WHERE id=1");
-  if (lockRow?.app_lock_hash) locked = true;
-
-  const gate = () => {
-    if (locked) apiError(423, "locked", "App is locked.");
-  };
   const D = opts.dataDir;
 
   return {
     // records
-    onboarding: (input: records.OnboardingInput) => (gate(), records.onboarding(db, D, input)),
-    listPeriods: () => (gate(), records.listPeriods(db)),
-    createPeriod: (input: records.PeriodInput) => (gate(), records.createPeriod(db, input)),
-    updatePeriod: (id: number, input: records.PeriodInput) => (gate(), records.updatePeriod(db, id, input)),
-    deletePeriod: (id: number) => (gate(), records.deletePeriod(db, id)),
-    getLogs: (date: string) => (gate(), records.getLogs(db, D, date)),
-    createLog: (input: records.LogInput) => (gate(), records.createLog(db, D, input)),
-    listCategories: () => (gate(), records.listCategories(db)),
+    onboarding: (input: records.OnboardingInput) => (records.onboarding(db, D, input)),
+    listPeriods: () => (records.listPeriods(db)),
+    createPeriod: (input: records.PeriodInput) => (records.createPeriod(db, input)),
+    updatePeriod: (id: number, input: records.PeriodInput) => (records.updatePeriod(db, id, input)),
+    deletePeriod: (id: number) => (records.deletePeriod(db, id)),
+    getLogs: (date: string) => (records.getLogs(db, D, date)),
+    createLog: (input: records.LogInput) => (records.createLog(db, D, input)),
+    listCategories: () => (records.listCategories(db)),
     updateCategories: (input: Parameters<typeof records.updateCategories>[1]) =>
-      (gate(), records.updateCategories(db, input)),
-    listNotes: (date?: string) => (gate(), records.listNotes(db, D, date)),
-    createNote: (input: { date?: string | null; text: string }) => (gate(), records.createNote(db, D, input)),
-    deleteNote: (id: number) => (gate(), records.deleteNote(db, id)),
-    listActivity: () => (gate(), records.listActivity(db, D)),
-    createActivity: (input: records.ActivityInput) => (gate(), records.createActivity(db, D, input)),
-    deleteActivity: (id: number) => (gate(), records.deleteActivity(db, id)),
-    getContraception: () => (gate(), records.getContraception(db, D)),
+      (records.updateCategories(db, input)),
+    listNotes: (date?: string) => (records.listNotes(db, D, date)),
+    createNote: (input: { date?: string | null; text: string }) => (records.createNote(db, D, input)),
+    deleteNote: (id: number) => (records.deleteNote(db, id)),
+    listActivity: () => (records.listActivity(db, D)),
+    createActivity: (input: records.ActivityInput) => (records.createActivity(db, D, input)),
+    deleteActivity: (id: number) => (records.deleteActivity(db, id)),
+    getContraception: () => (records.getContraception(db, D)),
     putContraception: (input: { uses_pills: boolean; method?: string | null }) =>
-      (gate(), records.putContraception(db, D, input)),
+      (records.putContraception(db, D, input)),
 
     // predictions & insights
     getNextPrediction: () => {
-      gate();
+
       const { explanation, ...rest } = prediction.compute(
         db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period")
       );
       return rest;
     },
     getPredictionExplain: () => {
-      gate();
+
       const r = prediction.compute(db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period"));
       return { ...(r.explanation ?? {}), status: r.status, estimate: r.estimate, window: r.window, confidence: r.confidence };
     },
     getInsights: () => {
-      gate();
+
       const periods = db.all<prediction.PeriodRow>("SELECT start_date, end_date FROM period");
       const r = prediction.compute(periods);
       return {
@@ -81,25 +74,25 @@ export function createApi(db: Db, opts: ApiOptions) {
         symptom_patterns: prediction.symptomPatterns(db, periods),
       };
     },
-    getStatsForAi: () => prediction.getStatsForAi(db), // B2 calls this directly; not lock-gated
+    getStatsForAi: () => prediction.getStatsForAi(db), // B2 calls this directly
 
     // reminders
-    getPillReminder: () => (gate(), reminders.getPillReminder(db, D)),
+    getPillReminder: () => (reminders.getPillReminder(db, D)),
     putPillReminder: (input: Parameters<typeof reminders.putPillReminder>[2]) =>
-      (gate(), reminders.putPillReminder(db, D, input)),
-    getDueReminders: (at?: Date) => (gate(), reminders.dueEvents(db, D, at)),
-    respondToEvent: (id: number, status: "taken" | "skipped") => (gate(), reminders.respond(db, D, id, status)),
-    getReminderHistory: (days?: number) => (gate(), reminders.reminderHistory(db, D, days)),
-    listPregnancyTestReminders: () => (gate(), reminders.listPregnancyTestReminders(db, D)),
+      (reminders.putPillReminder(db, D, input)),
+    getDueReminders: (at?: Date) => (reminders.dueEvents(db, D, at)),
+    respondToEvent: (id: number, status: "taken" | "skipped") => (reminders.respond(db, D, id, status)),
+    getReminderHistory: (days?: number) => (reminders.reminderHistory(db, D, days)),
+    listPregnancyTestReminders: () => (reminders.listPregnancyTestReminders(db, D)),
     createPregnancyTestReminder: (input: { date: string; note?: string | null }) =>
-      (gate(), reminders.createPregnancyTestReminder(db, D, input)),
-    deletePregnancyTestReminder: (id: number) => (gate(), reminders.deletePregnancyTestReminder(db, id)),
+      (reminders.createPregnancyTestReminder(db, D, input)),
+    deletePregnancyTestReminder: (id: number) => (reminders.deletePregnancyTestReminder(db, id)),
 
     // privacy & storage
-    getStorage: () => (gate(), privacy.storageReport(opts.paths ?? {})),
-    export: () => (gate(), privacy.exportData(db, D)),
+    getStorage: () => (privacy.storageReport(opts.paths ?? {})),
+    export: () => (privacy.exportData(db, D)),
     backup: (passphrase: string, destPath?: string) => {
-      gate();
+
       if (!passphrase) apiError(400, "validation_error", "A passphrase is required to encrypt the backup.");
       try {
         const path = privacy.makeBackup(db, D, passphrase, destPath);
@@ -110,7 +103,7 @@ export function createApi(db: Db, opts: ApiOptions) {
       }
     },
     restore: (passphrase: string, backupPath: string) => {
-      gate();
+
       let data;
       try {
         data = privacy.readBackup(backupPath, passphrase);
@@ -121,21 +114,11 @@ export function createApi(db: Db, opts: ApiOptions) {
       return { restored: true };
     },
     deleteAll: (opts2: { deleteModel?: boolean } = {}) => {
-      gate();
+
       privacy.wipeUserData(db);
       if (opts2.deleteModel && opts.paths?.model) {
         try { fs.unlinkSync(opts.paths.model); } catch { /* ignore */ }
       }
-    },
-    lock: (passphrase: string) => {
-      const r = privacy.lock(db, passphrase);
-      locked = true;
-      return r;
-    },
-    unlock: (passphrase: string) => {
-      const r = privacy.unlock(db, passphrase);
-      locked = false;
-      return r;
     },
   };
 }
