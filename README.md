@@ -46,5 +46,3 @@ Pu-shy can provide the familiar prediction categories found in period-tracking a
 - Symptom patterns
 - Changes over time
 - Prediction confidence
-
-However, Pu-shy should use its *own transparent calculations*. It should not claim to use Flo’s proprietary algorithm or promise exactly the same predicted dates.
