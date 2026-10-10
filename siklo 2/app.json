@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "SikLO",
+    "slug": "siklo",
+    "scheme": "siklo",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "softwareKeyboardLayoutMode": "resize",
+      "allowBackup": false
+    },
+    "plugins": ["expo-router", "expo-secure-store", "expo-font"]
+  }
+}
