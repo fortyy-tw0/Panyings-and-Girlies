@@ -8,8 +8,6 @@ SikLo, from the Filipino word *siklo* meaning "cycle," is a menstrual wellness a
 
 Cycle tracking should leave room for uncertainty. You may have irregular periods, missing dates, or days when you only want to write a note. SikLo is designed to meet you where you are, without requiring an online account or every detail of your health history.
 
-> **Project status:** SikLo is a hackathon prototype under active development. The frontend and backend are still being integrated. The UI/UX designs show the intended experience, while the development branches contain work toward it. The complete offline mobile experience and privacy protections still need end-to-end verification on devices.
-
 ## The experience we're building
 
 - **Track at your own pace.** Record period dates, spotting, flow, cramps, mood, sleep, energy, and personal notes. Optional questions can be skipped, and an unknown date stays unknown.
